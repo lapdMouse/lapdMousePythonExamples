@@ -2,9 +2,9 @@
 
 **lapdMousePythonExamples** is a collection of Python 3 Jupyter notebooks
 that demonstrate how to work with data from the
-[lapdMouse Archive](http://lapdmouse.iibi.uiowa.edu/DataRepresentation).
+[Lung anatomy + particle deposition (lapd) mouse archive collection](https://doi.org/10.25820/9arg-9w56).
 For more information about the lapdMouse project and available data visit
-<http://lapdmouse.iibi.uiowa.edu>.
+<https://doi.org/10.25820/9arg-9w56>. 
 
 ## Getting Started
 
@@ -27,5 +27,7 @@ the [lapdMouse Data Archive](http://lapdmouse.iibi.uiowa.edu/Data) website.
 This work was supported by NIH project R01ES023863.
 
 ## Support
-For support and further information please visit <http://lapdmouse.iibi.uiowa.edu>
-or contact us at http://lapdmouse.iibi.uiowa.edu/Contact.
+
+For support and further information please visit the
+"Lung anatomy + particle deposition (lapd) mouse archive collection"
+at <https://doi.org/10.25820/9arg-9w56>.

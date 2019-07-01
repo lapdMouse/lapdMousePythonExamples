@@ -3,10 +3,10 @@
 
 lapdMouseDBUtil is a command line tool to list, search, and download files from
 the ToxMouse database. For more information about the ToxMouse project and
-available data visit http://lapdmouse.iibi.uiowa.edu.
+available data visit the "Lung anatomy + particle deposition (lapd) mouse
+archive": https://doi.org/10.25820/9arg-9w56.
 """
 __author__ = "Christian Bauer"
-__contact__ = "lapdmouse@iibi.uiowa.edu"
 __copyright__ = "Copyright 2018 University of Iowa"
 __date__ = "2018/02/13"
 __license__ = "3-clause BSD license"
