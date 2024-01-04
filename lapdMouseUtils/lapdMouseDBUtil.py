@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 """ lapdMouseDBUtil
 
 lapdMouseDBUtil is a command line tool to list, search, and download files from
@@ -12,62 +12,59 @@ __date__ = "2018/02/13"
 __license__ = "3-clause BSD license"
 __version__ = "1.0.0"
 
-import argparse, urllib, json, os, datetime, fnmatch, time, sys
-if (sys.version_info > (3, 0)): # urllib2 from python 2.x is  urllib.request in pyton 3.x
-  import urllib.request as urllib2
-  from urllib.parse import urlencode
-else:
-  import urllib2
-  from urllib import urlencode
+import argparse, json, os, datetime, fnmatch, time, sys, urllib.request, urllib.error
+MIN_PYTHON = (3, 6)
+if (sys.version_info < MIN_PYTHON):
+   sys.exit("Python %s.%s or later is required.\n" % MIN_PYTHON)
 
-remoteFolderId = '0B8oknMRvtleaRXFkcGhZaFd0eUU'
+remoteFolderUrl = 'https://cebs-ext.niehs.nih.gov/cahs/file/download/lapd/'
+
 class lapdMouseDBUtil():
 
-  def __init__(self, lapdMouseDatabaseFolderId=remoteFolderId):
-    self.gdriveRoot = lapdMouseDatabaseFolderId
+  def __init__(self, lapdMouseDatabaseUrl=remoteFolderUrl):
+    self.gdriveURL = lapdMouseDatabaseUrl
 
-  def canAccess(self):
+  def _canAccess(self):
+    import ssl
+    # Create a secure SSL context
+    ctx = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+    ctx.options |= 0x4  # OP_LEGACY_SERVER_CONNECT
+
     try:
-      self._listFolderFromGoogleDrive(self.gdriveRoot,0)
-      return True
+      httpCode = urllib.request.urlopen(self.gdriveURL+'m01/MD5SUMS',context=ctx).getcode()
+      if (httpCode == 200):
+        return True
+      else:
+        print(f"Unexpected HTTP error ({httpCode}.")
+        return False
+    except urllib.error.HTTPError as e:
+      print('The server couldn\'t fulfill the request.')
+      print('Error code: ', e.code)
+      return False
+    except urllib.error.URLError as e:
+      print('We failed to reach a server.')
+      print('Reason: ', e.reason)
+      return False
     except:
       print("Unexpected error:", sys.exc_info()[0])
       return False
 
   def listDirectory(self, dirname='',depth=0):
-    try:
-      if dirname=='' or dirname=='.': return self._listFolderFromGoogleDrive(self.gdriveRoot, depth)
-      directoryId = self._getResourceId(self.gdriveRoot, dirname)
-      if directoryId==None: return None
-      return self._listFolderFromGoogleDrive(directoryId, depth)
-    except:
-      return []
-
+    return self._listFolderRemote(dirname, depth)
+    
   def downloadFile(self, src, dst=None):
-    if dst==None: dst=src
-    srcId = self._getResourceId(self.gdriveRoot, src)
-    if srcId==None: return None
-    if not os.path.exists(os.path.dirname(dst)): os.makedirs(os.path.dirname(dst))
-    self._downloadFileFromGoogleDrive(srcId, dst)
+    if dst==None:
+        dst=src
+    if not os.path.exists(dst):
+        if not os.path.exists(os.path.dirname(dst)):
+            sos.makedirs(os.path.dirname(dst))
+        self._downloadFileFromRemote(src, dst)
 
-  def _downloadFileFromGoogleDrive(self,file_id, destination):
-    queryParameters = {"export":"download", "id":file_id}
-    queryParameters =  dict((k, v) for k, v in queryParameters.items() if v)
-    queryString = "?%s" % urlencode(queryParameters)
-    URL = "https://drive.google.com/uc"
-    requestUrl = URL + queryString
-    request = urllib2.Request(requestUrl)
-    response = urllib2.urlopen(request)
+  def _downloadFileFromRemote(self, src, destination):
+    requestUrl = self.gdriveURL + src
+    request = urllib.request.Request(requestUrl)
+    response = urllib.request.urlopen(request)
     self._downloadURLStreaming(response, destination)
-    cookie = response.headers.get('Set-Cookie')
-    if os.stat(destination).st_size<10000:
-      confirmationURL = self._getConfirmationURL(destination)
-      if confirmationURL:
-        confirmationURL = 'https://drive.google.com'+confirmationURL.replace('&amp;','&')
-        req2 = urllib2.Request(confirmationURL)
-        req2.add_header('cookie', cookie)
-        response = urllib2.urlopen(req2)
-        self._downloadURLStreaming(response, destination)
 
   def _downloadURLStreaming(self,response,destination):
     if response.getcode() == 200:
@@ -79,79 +76,26 @@ class lapdMouseDBUtil():
         destinationFile.write(buffer)
       destinationFile.close()
 
-  def _getConfirmationURL(self,destination):
-    with open(destination) as f:
-      for line in f:
-        if (sys.version_info >= (3, 0)): line=bytes(line,"utf-8").decode('unicode_escape')
-        starttoken='/uc?export=download&amp;'
-        start = line.find(starttoken)
-        if start!=-1:
-          line = line[start:]
-          end = line.find('">')
-          value = line[0:end]
-          return value if (sys.version_info >= (3, 0)) else value.decode('string-escape')
-    return None
+  def _listFolderRemote(self,dirname,depth=0):
+    # Read file with file names and metadata
+    try:
+      with open("allfiles.json") as infile:
+        data = infile.read()
+      allcontent = json.loads(data)
+    except:
+      return []
 
-  def _listFolderFromGoogleDrive(self,folder_id,depth=0):
-    URL = "https://drive.google.com/drive/folders/"+folder_id+"?usp=sharing"
-    request = urllib2.Request(URL)
-    response = urllib2.urlopen(request)
-    if response.getcode()!=200:
-      print('Error accessing resource')
-      return
-    jsondata = self._getDriveIvd(response)
-    jsondata = json.loads(jsondata)
-    dirlist = jsondata[0]
-    dircontent = []    
-    if dirlist is not None:
-      for item in dirlist:
-        identifier = item[0]
-        name = item[2]
-        ftype = item[3]
-        fsize = item[13] if item[13] else 0
-        creationTimestamp = item[9]
-        modificationTimestamp = item[10]
-        isFolder = ftype=='application/vnd.google-apps.folder'
-        dircontent.append({'name':name, 'id':identifier, 'type': ftype, 'isFolder':isFolder, \
-          'size':fsize, 'creationTimestamp':creationTimestamp, 'modificationTimestamp':modificationTimestamp})
-        if isFolder and depth>0:
-          subdir = self._listFolderFromGoogleDrive(identifier,depth-1)
-          if subdir is not None:
-            for sub in subdir:
-              subname = os.path.join(name, sub['name'])
-              dircontent.append({'name':subname, 'id':sub['id'], 'type': sub['type'], 'isFolder':sub['isFolder'], \
-                'size':sub['size'], 'creationTimestamp':creationTimestamp, 'modificationTimestamp':modificationTimestamp})
+    dircontent = []
+    for oneFile in allcontent:
+      if (dirname == '.' or os.path.commonprefix([dirname,oneFile['name']]) == dirname):
+        remainingPath = oneFile['name'][len(dirname)+1:]
+        if (remainingPath.count('/') <= depth):
+          dircontent.append(oneFile)
     return dircontent
 
   def _splitPath(self, p):
     a,b = os.path.split(p)
     return (self._splitPath(a) if len(a) and len(b) else []) + [b]
-
-  def _getResourceId(self, folder_id, relativePath):
-    pathParts = self._splitPath(relativePath)
-    finalNode = len(pathParts)==1
-    currentName = pathParts[0]
-    dircontent = self._listFolderFromGoogleDrive(folder_id)
-    for d in dircontent:
-      if d['name']==currentName:
-        if finalNode: return d['id']
-        else:
-          remainingPath = pathParts[1]
-          for p in pathParts[2:]: remainingPath = os.path.join(remainingPath, p)
-          return self._getResourceId(d['id'], remainingPath)
-    return None
-
-  def _getDriveIvd(self,response):
-    for line in response:
-      if (sys.version_info >= (3, 0)): line=bytes(line).decode('unicode_escape')
-      starttoken="window[\'_DRIVE_ivd\'] = \'"
-      start = line.find(starttoken)
-      if start!=-1:
-        line = line[start+len(starttoken):]
-        end = line.find('\'')
-        value = line[0:end]
-        return value if (sys.version_info >= (3, 0)) else value.decode('string-escape')
-    return None
 
 def humanReadableSize(size):
   if size==None: return ""
@@ -177,7 +121,7 @@ def getStatus(item):
       localSize = os.path.getsize(realPath)
       if remoteSize!=localSize or \
         remoteModificationTime>localModificationTime:
-        status = 'required update'
+        status = 'require update'
   return status
 
 def summarizeItems(items):
@@ -191,14 +135,14 @@ def summarizeItems(items):
   filesForDownload = [i for i in remoteFiles if i['status']=='require download']
   summaryString += ', require download='+str(len(filesForDownload))
   if len(filesForDownload)>0: summaryString+='('+humanReadableSize(sum(i['size'] for i in filesForDownload))+')'
-  filesOutOfDate = [i for i in remoteFiles if i['status']=='required']
+  filesOutOfDate = [i for i in remoteFiles if i['status']=='require update']
   summaryString += ', require update='+str(len(filesOutOfDate))
   if len(filesOutOfDate)>0: summaryString+='('+humanReadableSize(sum(i['size'] for i in filesOutOfDate))+')'
   print(summaryString)
 
 def listItem(item):
-  remoteName = item['name'] if len(root)==0 else root+'/'+item['name']
-  localName = os.path.join(localBaseDir, remoteName)
+  remoteName = item['remoteName'] 
+  localName = item['localName']
   message = remoteName
   if i['isFolder']:
     message+=' -> '+localName+' (folder)'
@@ -238,7 +182,7 @@ def downloadItem(item, db):
 
 def testDBAccess(db):
   serverStatus = 'unknown'
-  if lapdMouseDB.canAccess():
+  if lapdMouseDB._canAccess():
     serverStatus = 'available'
   else:
     serverStatus = 'unavailable'
@@ -270,20 +214,22 @@ if __name__=="__main__":
   if root.rfind('/')!=-1: root=root[0:root.rfind('/')]
   queryPattern = pattern[len(root)+1:] if len(root)>0 else pattern
   queryRoot = root if len(root)>0 else '.'
-  #queryDepth = queryPattern[len(root)+1:].count('/')
   queryDepth = queryPattern.count('/')
   print('DB query: root='+queryRoot+', depth='+str(queryDepth)+', pattern='+queryPattern)
 
   # query DB and find matches
   items = lapdMouseDB.listDirectory(queryRoot,queryDepth)
-  matchingItems = [i for i in items if fnmatch.fnmatch(i['name'], queryPattern)]
+  if root == '.':
+      matchingItems = [i for i in items if fnmatch.fnmatch(i['name'], queryPattern)]
+  else:
+      matchingItems = [i for i in items if fnmatch.fnmatch(i['name'], pattern)]
 
   # determine file status and print summary
   for i in matchingItems:
-    i['remoteName'] = i['name'] if len(root)==0 else root+'/'+i['name']
+    i['remoteName'] = i['name'] # if len(root)==0 else root+i['name']
     i['localName'] = os.path.join(localBaseDir, i['remoteName'])
     i['status'] = getStatus(i)
-
+  
   # apply action
   t0 = time.time()
   sizeItemsDownloaded = 0
