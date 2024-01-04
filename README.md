@@ -14,7 +14,7 @@ structures and [matplotlib](https://matplotlib.org/) for plotting.
 
 **Prerequesite**: **lapdMousePythonExamples** requires installed versions of
 Python 3, jupyter, pandas, and matplotlib. We recommend installing
-[Anacondo](https://www.anaconda.com/download) which includes all necessary
+[Anaconda](https://www.anaconda.com/download) which includes all necessary
 dependencies.
 
 **Example data**: All data utilized in the examples below can be downloaded from
